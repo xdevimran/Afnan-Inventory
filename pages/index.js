@@ -1,115 +1,264 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+// pages/index.js
+import React, { useMemo } from "react";
+import useStockData from "../hooks/useStockData";
+import ChartComponent from "../components/ChartComponent";
+import { FaBoxes, FaUsers, FaMoneyBillWave, FaRupeeSign } from "react-icons/fa";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const Dashboard = () => {
+  const { products, sellers, transactions, isLoading } = useStockData();
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+  // Data for Summary Cards - এই ক্যালকুলেশনগুলো isLoading এর উপর নির্ভর করে না
+  // কারণ products, sellers, transactions useStockData থেকে আসছে এবং initial state এ খালি array থাকে।
+  const totalProducts = products.length;
+  const totalSellers = sellers.length;
+  const totalDues = sellers.reduce((sum, seller) => sum + seller.dues, 0);
 
-export default function Home() {
+  // আজকের তারিখ স্থানীয় সময় অনুযায়ী সেট করা
+  const today = new Date().toLocaleDateString("en-CA"); // 'en-CA' ensures YYYY-MM-DD format for consistent comparison
+  const todaySales = transactions
+    .filter((t) => new Date(t.date).toLocaleDateString("en-CA") === today)
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Data for Charts - এই useMemo হুকগুলো isLoading চেক এর নিচে সরানোর দরকার নেই।
+  // এগুলি তাদের নিজস্ব dependencies (transactions, products, sellers) উপর নির্ভর করে।
+  // যখন isLoading true থাকে, তখন transactions/products/sellers খালি অ্যারে হবে,
+  // এবং useMemo গুলো সে অনুযায়ী খালি ডেটা নিয়ে কাজ করবে, যা এরর সৃষ্টি করবে না।
+  const salesByMonthData = useMemo(() => {
+    const monthlySales = {};
+    transactions.forEach((t) => {
+      const date = new Date(t.date);
+      const monthYear = `${date.toLocaleString("bn-BD", {
+        month: "short",
+      })} ${date.getFullYear()}`;
+      monthlySales[monthYear] = (monthlySales[monthYear] || 0) + t.amount;
+    });
+
+    const sortedMonths = Object.keys(monthlySales).sort((a, b) => {
+      const monthMap = {
+        জানু: 0,
+        ফেব্রু: 1,
+        মার্চ: 2,
+        এপ্রি: 3,
+        মে: 4,
+        জুন: 5,
+        জুলাই: 6,
+        আগস্ট: 7,
+        সেপ্টে: 8,
+        অক্টো: 9,
+        নভে: 10,
+        ডিসে: 11,
+      };
+      const [monthAStr, yearA] = a.split(" ");
+      const [monthBStr, yearB] = b.split(" ");
+      const dateA = new Date(parseInt(yearA), monthMap[monthAStr]);
+      const dateB = new Date(parseInt(yearB), monthMap[monthBStr]);
+      return dateA - dateB;
+    });
+
+    return {
+      labels: sortedMonths,
+      datasets: [
+        {
+          label: "মাসিক বিক্রি",
+          data: sortedMonths.map((month) => monthlySales[month]),
+          borderColor: "rgb(75, 192, 192)",
+          backgroundColor: "rgba(75, 192, 192, 0.5)",
+          tension: 0.1,
+        },
+      ],
+    };
+  }, [transactions]); // transactions লোড না হওয়া পর্যন্ত খালি থাকবে
+
+  const topSellersData = useMemo(() => {
+    const sellerSales = {};
+    sellers.forEach((s) => (sellerSales[s.name] = 0));
+    transactions.forEach((t) => {
+      sellerSales[t.sellerName] = (sellerSales[t.sellerName] || 0) + t.amount;
+    });
+
+    const sortedSellers = Object.entries(sellerSales)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5);
+
+    return {
+      labels: sortedSellers.map(([name]) => name),
+      datasets: [
+        {
+          label: "বিক্রয় মূল্য",
+          data: sortedSellers.map(([, amount]) => amount),
+          backgroundColor: [
+            "rgba(255, 99, 132, 0.7)",
+            "rgba(54, 162, 235, 0.7)",
+            "rgba(255, 206, 86, 0.7)",
+            "rgba(75, 192, 192, 0.7)",
+            "rgba(153, 102, 255, 0.7)",
+          ],
+          borderColor: [
+            "rgba(255, 99, 132, 1)",
+            "rgba(54, 162, 235, 1)",
+            "rgba(255, 206, 86, 1)",
+            "rgba(75, 192, 192, 1)",
+            "rgba(153, 102, 255, 1)",
+          ],
+          borderWidth: 1,
+        },
+      ],
+    };
+  }, [transactions, sellers]); // transactions and sellers লোড না হওয়া পর্যন্ত খালি থাকবে
+
+  const topProductsData = useMemo(() => {
+    const productSales = {};
+    products.forEach((p) => (productSales[p.name] = 0));
+    transactions.forEach((t) => {
+      productSales[t.productName] =
+        (productSales[t.productName] || 0) + t.quantity;
+    });
+
+    const sortedProducts = Object.entries(productSales)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5);
+
+    return {
+      labels: sortedProducts.map(([name]) => name),
+      datasets: [
+        {
+          label: "বিক্রিত পরিমাণ",
+          data: sortedProducts.map(([, quantity]) => quantity),
+          backgroundColor: [
+            "rgba(255, 99, 132, 0.7)",
+            "rgba(54, 162, 235, 0.7)",
+            "rgba(255, 206, 86, 0.7)",
+            "rgba(75, 192, 192, 0.7)",
+            "rgba(153, 102, 255, 0.7)",
+          ],
+          hoverBackgroundColor: [
+            "rgba(255, 99, 132, 0.9)",
+            "rgba(54, 162, 235, 0.9)",
+            "rgba(255, 206, 86, 0.9)",
+            "rgba(75, 192, 192, 0.9)",
+            "rgba(153, 102, 255, 0.9)",
+          ],
+        },
+      ],
+    };
+  }, [transactions, products]); // transactions and products লোড না হওয়া পর্যন্ত খালি থাকবে
+
+  // এখন isLoading চেকটি UI রেন্ডারের ঠিক আগে হবে, কিন্তু কোনো হুককে শর্তসাপেক্ষে কল করবে না।
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen text-xl text-gray-600">
+        ডেটা লোড হচ্ছে...
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="space-y-8">
+      <h2 className="text-4xl font-bold text-gray-800 mb-8">ড্যাশবোর্ড</h2>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+          <FaBoxes className="text-4xl text-blue-500" />
+          <div>
+            <p className="text-gray-600">মোট পণ্য</p>
+            <p className="text-3xl font-bold text-gray-800">{totalProducts}</p>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+          <FaUsers className="text-4xl text-green-500" />
+          <div>
+            <p className="text-gray-600">মোট সেলার</p>
+            <p className="text-3xl font-bold text-gray-800">{totalSellers}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+          <FaMoneyBillWave className="text-4xl text-red-500" />
+          <div>
+            <p className="text-gray-600">মোট বকেয়া</p>
+            <p className="text-3xl font-bold text-gray-800">
+              {totalDues.toFixed(2)} টাকা
+            </p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+          <FaRupeeSign className="text-4xl text-purple-500" />
+          <div>
+            <p className="text-gray-600">আজকের বিক্রি</p>
+            <p className="text-3xl font-bold text-gray-800">
+              {todaySales.toFixed(2)} টাকা
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartComponent
+          type="line"
+          data={salesByMonthData}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "top", labels: { color: "#333" } },
+              title: { display: false },
+            },
+            scales: {
+              x: {
+                ticks: { color: "#555" },
+                grid: { color: "rgba(0,0,0,0.05)" },
+              },
+              y: {
+                ticks: { color: "#555" },
+                grid: { color: "rgba(0,0,0,0.05)" },
+              },
+            },
+          }}
+          title="মাসিক বিক্রির প্রবণতা"
+        />
+        <ChartComponent
+          type="bar"
+          data={topSellersData}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { display: false },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { color: "#555" },
+                grid: { color: "rgba(0,0,0,0.05)" },
+              },
+              x: {
+                ticks: { color: "#555" },
+                grid: { color: "rgba(0,0,0,0.05)" },
+              },
+            },
+          }}
+          title="শীর্ষ সেলার (বিক্রয় মূল্য অনুযায়ী)"
+        />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-1">
+        <ChartComponent
+          type="pie"
+          data={topProductsData}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "right", labels: { color: "#333" } },
+              title: { display: false },
+            },
+          }}
+          title="শীর্ষ বিক্রীত পণ্য (পরিমাণ অনুযায়ী)"
+        />
+      </div>
     </div>
   );
-}
+};
+
+export default Dashboard;
